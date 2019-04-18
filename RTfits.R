@@ -41,7 +41,7 @@ for (i in 1:max(RT[,4]))
       dat <- list(RT=data, T=T, minRT=minRT)
       
       samples <- jags(dat, inits=NULL, params,  # inits=NULL
-                      model.file="Model_IG_GAM_ind.txt", n.chains=3, n.iter=50000, 
+                      model.file="Model_IG_TN_ind.txt", n.chains=3, n.iter=15000, 
                       n.burnin=1200, n.thin=10, DIC=T)  
       
       print(samples)
@@ -99,9 +99,9 @@ xi
 #gelman.plot(samples.mcmc)
 #gelman.diag(samples.mcmc)
 ################################################################################  
-s = rep(c(1,2),30)
-c = rep(c(1,1,2,2,3,3),10)
-p = rep(c(1:10),each=6)
+s = rep(c(1,2),57)
+c = rep(c(1,1,2,2,3,3),19)
+p = rep(c(1:19),each=6)
 data=cbind(s,c,p)
 Alphadata=cbind(alpha,theta,xi,data)
 alpha_data=data.frame(Alphadata)
@@ -168,3 +168,230 @@ plot=ggplot(thetaSum, aes(x=Attention, y=theta, group = RDK, col = RDK)) +
   scale_colour_discrete(labels = c("Red", "Blue"))+
   theme_classic()+  theme(axis.text=element_text(size=14))
 plot
+
+
+now <- Sys.time()
+filename = paste0(format(now, "%Y%m%d_%H%M%S_"), "data.Rdata")
+save(factordata, file = filename)
+
+
+##PLOT PARAMS BY SUBJ##
+plot=ggplot(factordata, aes(x=Attention, y=theta, group=RDK, col = RDK)) + 
+  geom_point(size=2, shape=21,fill="white")+
+  geom_line()+
+  scale_y_continuous(name = 'Shift')+
+  scale_colour_discrete(labels = c("Red", "Blue"))+
+  theme_classic()+  theme(axis.text=element_text(size=6))+
+  facet_wrap(~Subj)
+plot
+
+plot=ggplot(factordata, aes(x=Attention, y=xi, group=RDK, col = RDK)) + 
+  geom_point(size=2, shape=21,fill="white")+
+  geom_line()+
+  scale_y_continuous(name = 'Drift')+
+  scale_colour_discrete(labels = c("Red", "Blue"))+
+  theme_classic()+  theme(axis.text=element_text(size=6))+
+  facet_wrap(~Subj)
+plot
+
+plot=ggplot(factordata, aes(x=Attention, y=alpha, group=RDK, col = RDK)) + 
+  geom_point(size=2, shape=21,fill="white")+
+  geom_line()+
+  scale_y_continuous(name = 'Threshold')+
+  scale_colour_discrete(labels = c("Red", "Blue"))+
+  theme_classic()+  theme(axis.text=element_text(size=6))+
+  facet_wrap(~Subj)
+plot
+
+
+##plotting RT distr 
+RT$Condition<-as.factor(RT$Condition)
+plot=RT%>%
+  filter(RDK==2)%>%
+  ggplot(aes(x=RT,group=Condition, colour=Condition)) + 
+  geom_density()+
+  facet_wrap(~Subj)
+plot
+
+RT<-mutate(RT, RDK = ifelse ( RDK==1, 'red', 'blue'))
+RT<-mutate(RT, Attention = ifelse(Condition==1, 'attend red', 
+                                                  ifelse(Condition==2, 'attend blue', 'attend both')))
+Red<-RT%>%
+  filter(RDK=='red')%>%
+  mutate(condition=ifelse(Attention=='attend red', 'attended', 
+                          ifelse(Attention=='attend blue', 'unattended', 
+                                 'neutral')))
+Blue<-RT%>%
+  filter(RDK=='blue')%>%
+  mutate(condition=ifelse(Attention=='attend blue', 'attended', 
+                          ifelse(Attention=='attend red', 'unattended', 
+                                 'neutral')))
+RTdata<-rbind(Red, Blue)
+
+RTsum=summary_se_within(RTdata, 'RT', 'Subj', withinvars = c('condition', 'RDK'))
+RTsum$RDK=as.factor(RTsum$RDK)
+
+plot=ggplot(RTsum, aes(x=condition, y=RT, group = RDK, col = RDK)) + 
+  geom_line(size = 1.5)+
+  geom_errorbar(aes(ymin=RT-CI, ymax=RT+CI), 
+                width=.01) + 
+  geom_point(size=6, shape=21,fill="white")+
+  scale_y_continuous(name = 'RT')+
+  scale_colour_manual(values = c('red', 'blue'), labels = c("Red", "Blue"))+
+  theme_classic()+  theme(axis.text=element_text(size=14))
+plot
+
+plot=ggplot(factordata, aes(x=Attention, y=xi, group = RDK, col = RDK)) + 
+  geom_line(size = 0.5)+
+  geom_point(size=2, shape=21,fill="white")+expand_limits(y = c(6, 8))+
+  scale_y_continuous(name = 'Drift rate')+
+  theme_classic()+facet_wrap(~Subj)
+  plot
+
+  
+  library(ez)
+  a<-ezANOVA(
+    data = RTdata
+    , dv = RT
+    , wid = Subj
+    , within = .(condition, RDK)
+    , type=2
+    , detailed=T
+  )
+  a
+
+## recode to Att/Neutral/Unatt
+  Red<-factordata%>%
+    filter(RDK=='red')%>%
+    mutate(condition=ifelse(Attention=='attend red', 'attended', 
+           ifelse(Attention=='attend blue', 'unattended', 
+           'neutral')))%>%
+    group_by(Subj)%>%
+    mutate(alphaN=alpha/mean(alpha), 
+           thetaN=theta/mean(theta),
+           xiN=xi/mean(xi))
+
+Blue<-factordata%>%
+  filter(RDK=='blue')%>%
+  mutate(condition=ifelse(Attention=='attend blue', 'attended', 
+                          ifelse(Attention=='attend red', 'unattended', 
+                                 'neutral')))%>%
+  group_by(Subj)%>%
+  mutate(alphaN=alpha/mean(alpha), 
+         thetaN=theta/mean(theta),
+         xiN=xi/mean(xi))
+
+Normdata<-rbind(Red, Blue)
+
+
+##PLOT NORMDATA GROUP AVG
+
+alphaSum = summary_se_within(Normdata, 'alphaN', 'Subj', withinvars = c('RDK', 'condition'))
+thetaSum = summary_se_within(Normdata, 'thetaN', 'Subj', withinvars = c('RDK', 'condition'))
+xiSum = summary_se_within(Normdata, 'xiN', 'Subj', withinvars = c('RDK', 'condition'))
+AmpSum = summary_se_within(Normdata, 'Amps', 'Subj', withinvars = c('RDK', 'condition'))
+
+
+alphaSum = summary_se_within(Normdata, 'alpha', 'Subj', withinvars = c('RDK', 'condition'))
+thetaSum = summary_se_within(Normdata, 'theta', 'Subj', withinvars = c('RDK', 'condition'))
+xiSum = summary_se_within(Normdata, 'xi', 'Subj', withinvars = c('RDK', 'condition'))
+
+
+plot=ggplot(thetaSum, aes(x=condition, y=theta, group=RDK, col = RDK)) + 
+  geom_point(size=6, shape=21,fill="white")+
+  geom_line(size = 1.5)+
+  scale_y_continuous(name = 'Shift')+
+  geom_errorbar(aes(ymin=theta-CI, ymax=theta+CI), 
+                width=.01) + 
+  scale_colour_discrete(labels = c("Red", "Blue"))+
+  theme_classic()+  theme(axis.text=element_text(size=14))
+plot
+
+
+plot=ggplot(alphaSum, aes(x=condition, y=alpha, group=RDK, col = RDK)) + 
+  geom_point(size=6, shape=21,fill="white")+
+  geom_line(size = 1.5)+
+  scale_y_continuous(name = 'Threshold')+
+  geom_errorbar(aes(ymin=alpha-CI, ymax=alpha+CI), 
+                width=.01) + 
+  scale_colour_discrete(labels = c("Red", "Blue"))+
+  theme_classic()+  theme(axis.text=element_text(size=14))
+plot
+
+plot=ggplot(xiSum, aes(x=condition, y=xi, group=RDK, col = RDK)) + 
+  geom_point(size=6, shape=21,fill="white")+
+  geom_line(size = 1.5)+
+  scale_y_continuous(name = 'Drift')+
+  geom_errorbar(aes(ymin=xi-CI, ymax=xi+CI), 
+                width=.01) + 
+  scale_colour_discrete(labels = c("Red", "Blue"))+
+  theme_classic()+  theme(axis.text=element_text(size=14))
+plot
+
+plot=ggplot(AmpSum, aes(x=condition, y=Amps, group=RDK, col = RDK)) + 
+  geom_point(size=6, shape=21,fill="white")+
+  geom_line(size = 1.5)+
+  scale_y_continuous(name = 'Drift')+
+  geom_errorbar(aes(ymin=Amps-CI, ymax=Amps+CI), 
+                width=.01) + 
+  scale_colour_discrete(labels = c("Red", "Blue"))+
+  theme_classic()+  theme(axis.text=element_text(size=14))
+plot
+
+library(ez)
+a<-ezANOVA(
+  data = Normdata
+  , dv = alphaN
+  , wid = Subj
+  , within = .(condition, RDK)
+  , type=2
+  , detailed=T
+)
+a
+
+a<-ezANOVA(
+  data = Normdata
+  , dv = thetaN
+  , wid = Subj
+  , within = .(condition, RDK)
+  , type=2
+  , detailed=T
+)
+a
+
+a<-ezANOVA(
+  data = Normdata
+  , dv = xiN
+  , wid = Subj
+  , within = .(condition, RDK)
+  , type=2
+  , detailed=T
+)
+a
+
+
+plot=ggplot(RTdata[RTdata$RDK=='red',], aes(x=RT,group=condition, colour=condition)) + 
+  geom_density()+
+  facet_wrap(~Subj)
+plot
+
+plot=ggplot(RTdata[RTdata$RDK=='blue',], aes(x=RT,group=condition, colour=condition)) + 
+  geom_density()+
+  facet_wrap(~Subj)
+plot
+
+plot=ggplot(Normdata, aes(x=Amps, y=alpha, col=RDK))+
+  geom_point()
+plot
+
+plot=ggplot(Normdata, aes(x=Amps, y=xi, col=RDK))+
+  geom_point()
+plot
+
+plot=ggplot(Normdata, aes(x=Amps, y=theta, col=RDK))+
+  geom_point()
+plot
+
+library(lmerTest)
+mod1<-lmer(Amps ~ theta + xi + alpha + (RDK|Subj), data=Normdata)
+summary(mod1)
